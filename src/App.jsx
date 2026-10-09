@@ -2,44 +2,24 @@ import { useState, useEffect } from "react";
 import "./App.css";
 
 import Container from "./components/Container/Container";
-import Button from "./components/Button/Button";
-import Logo from "./components/Logo/Logo";
-import Navigation from "./components/Navigation/Navigation";
-import UserProfile from "./components/UserProfile/UserProfile";
 import HeroSection from "./components/HeroSection/HeroSection";
-import StatCard from "./components/StatCard/StatCard";
-import Modal from "./components/Modal/Modal";
 import Footer from "./components/Footer/Footer";
-import Card from "./components/Card/Card";
-import SectionHeader from "./components/SectionHeader/SectionHeader";
-import CategoryFilter from "./components/CategoryFilter/CategoryFilter";
-import TestimonialCard from "./components/TestimonialCard/TestimonialCard";
-import SearchBar from "./components/SearchBar/SearchBar";
-import SortDropdown from "./components/SortDropdown/SortDropdown";
-import Pagination from "./components/Pagination/Pagination";
+import Header from "./components/Header/Header";
+import CatalogSection from "./components/CatalogSection/CatalogSection";
+import StatsSection from "./components/StatsSection/StatsSection";
+import ReviewsSection from "./components/ReviewsSection/ReviewsSection";
+import AuthPromptModal from "./components/AuthPromptModal/AuthPromptModal";
+import ProductDetailsModal from "./components/ProductDetailsModal/ProductDetailsModal";
 
 import { CATEGORIES, mockProducts } from "./data/products";
 import logoAsset from "./assets/logo.svg";
 
-const navItems = [
-  { id: 1, label: "Catalog", link: "#catalog" },
-  { id: 2, label: "Builds", link: "#builds" },
-  { id: 3, label: "Support", link: "#support" },
-];
-
+// Данные для подвала и блока отзывов.
 const socialLinks = [
   { platform: "Instagram", url: "https://instagram.com", icon: "◎" },
   { platform: "Telegram", url: "https://t.me", icon: "➤" },
   { platform: "YouTube", url: "https://youtube.com", icon: "▶" },
 ];
-
-const user = {
-  name: "Ilim Shomorov",
-  role: "Gaming Setup Planner",
-  email: "ilim@example.com",
-  avatarUrl:
-    "https://images.unsplash.com/photo-1542273917363-3b1817f69a2d?q=80&w=1174&auto=format&fit=crop&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D",
-};
 
 const testimonials = [
   {
@@ -62,41 +42,65 @@ const testimonials = [
   },
 ];
 
-function Header({
-  isDarkMode,
-  onToggleTheme,
-  isAuthenticated,
-  onLogin,
-  onLogout,
-  favoritesCount,
-  cartCount,
-}) {
-  return (
-    <header className="app-header">
-      <Logo src={logoAsset} altText="PC Build" width="160px" />
-      <Navigation navItems={navItems} />
-      <div className="header-actions">
-        {isAuthenticated ? (
-          <UserProfile
-            cartCount={cartCount}
-            favoritesCount={favoritesCount}
-            user={user}
-            onClick={onLogout}
-          />
-        ) : (
-          <Button text="Log in" onClick={onLogin} />
-        )}
-        <Button
-          text={isDarkMode ? "Light theme" : "Dark theme"}
-          variant="secondary"
-          onClick={onToggleTheme}
-        />
-      </div>
-    </header>
-  );
+const isValidCartItem = (item) =>
+  item !== null &&
+  typeof item === "object" &&
+  Number.isInteger(item.id) &&
+  typeof item.name === "string" &&
+  Number.isInteger(item.quantity) &&
+  item.quantity > 0;
+
+const isValidFavoriteId = (productId) => Number.isInteger(productId);
+
+function readStoredArray(key, isValidItem) {
+  try {
+    const storedValue = window.localStorage.getItem(key);
+    if (storedValue === null) return [];
+
+    const parsedValue = JSON.parse(storedValue);
+    if (
+      !Array.isArray(parsedValue) ||
+      !parsedValue.every(isValidItem)
+    ) {
+      console.error(`Stored ${key} data has an invalid format.`);
+      return [];
+    }
+
+    return parsedValue;
+  } catch (error) {
+    console.error(`Failed to read ${key} from localStorage.`, error);
+    return [];
+  }
+}
+
+function readSavedCart() {
+  return readStoredArray("cart", isValidCartItem);
+}
+
+function readSavedFavorites() {
+  return readStoredArray("favorites", isValidFavoriteId);
+}
+
+function saveToStorage(key, value) {
+  try {
+    window.localStorage.setItem(key, JSON.stringify(value));
+  } catch (error) {
+    console.error(`Failed to save ${key} to localStorage.`, error);
+  }
+}
+
+function readStoredBoolean(key) {
+  try {
+    const storedValue = window.localStorage.getItem(key);
+    return storedValue === "true";
+  } catch (error) {
+    console.error(`Failed to read ${key} from localStorage.`, error);
+    return false;
+  }
 }
 
 function App() {
+  // Состояние интерфейса, каталога, авторизации и покупок.
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -110,7 +114,42 @@ function App() {
   const [favorites, setFavorites] = useState([]);
   const [products, setProducts] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isStorageLoaded, setIsStorageLoaded] = useState(false);
 
+  // Восстанавливает сохраненные настройки и данные пользователя при запуске.
+  useEffect(() => {
+    const hasActiveSession = readStoredBoolean("isAuthenticated");
+
+    if (hasActiveSession) {
+      setCartItems(readSavedCart());
+      setFavorites(readSavedFavorites());
+    }
+
+    setIsDarkMode(readStoredBoolean("isDarkMode"));
+    setIsAuthenticated(hasActiveSession);
+    setIsStorageLoaded(true);
+  }, []);
+
+  // Сохраняет изменения после завершения восстановления.
+  useEffect(() => {
+    if (!isStorageLoaded) return;
+
+    saveToStorage("isDarkMode", isDarkMode);
+    saveToStorage("isAuthenticated", isAuthenticated);
+
+    if (isAuthenticated) {
+      saveToStorage("cart", cartItems);
+      saveToStorage("favorites", favorites);
+    }
+  }, [
+    cartItems,
+    favorites,
+    isDarkMode,
+    isAuthenticated,
+    isStorageLoaded,
+  ]);
+
+  // Имитация загрузки списка товаров.
   useEffect(() => {
     const timeoutId = setTimeout(() => {
       setProducts(mockProducts);
@@ -120,6 +159,7 @@ function App() {
     return () => clearTimeout(timeoutId);
   }, []);
 
+  // Авторизация нужна для действий с корзиной и избранным.
   const requireAuthentication = () => {
     if (isAuthenticated) return true;
 
@@ -128,10 +168,25 @@ function App() {
   };
 
   const handleLogin = () => {
+    setCartItems(readSavedCart());
+    setFavorites(readSavedFavorites());
     setIsAuthenticated(true);
     setIsAuthPromptOpen(false);
   };
 
+  const handleLogout = () => {
+    setIsAuthenticated(false);
+    setCartItems([]);
+    setFavorites([]);
+    setSearchQuery("");
+    setSelectedCategory("All");
+    setSortBy("price-asc");
+    setCurrentPage(1);
+    setIsModalOpen(false);
+    setSelectedProduct(null);
+  };
+
+  // Поиск, фильтрация, сортировка и разбиение каталога на страницы.
   const filteredProducts = products
     .filter(
       (product) =>
@@ -159,6 +214,7 @@ function App() {
     safeCurrentPage * productsPerPage,
   );
 
+  // Обработчики корзины и избранного.
   const handleAddToCart = (product, quantity) => {
     if (!requireAuthentication()) return false;
 
@@ -189,190 +245,109 @@ function App() {
     );
   };
 
+  // Быстрая покупка добавляет товар в корзину и показывает подтверждение.
   const handleBuyNow = (product, quantity) => {
-    if (!handleAddToCart(product, quantity)) return;
+    if (!handleAddToCart(product, quantity)) return false;
 
     alert(`Purchase: ${product.name}`);
+    return true;
   };
 
+  // Количество товаров в корзине для отображения в хедере.
   const cartCount = cartItems.reduce((total, item) => total + item.quantity, 0);
 
   return (
     <div className={`app-root ${isDarkMode ? "dark-theme" : "light-theme"}`}>
       <Container>
+        {/* Шапка сайта */}
         <Header
+          logoSrc={logoAsset}
           isDarkMode={isDarkMode}
           onToggleTheme={() => setIsDarkMode((currentMode) => !currentMode)}
           isAuthenticated={isAuthenticated}
           onLogin={handleLogin}
-          onLogout={() => setIsAuthenticated(false)}
+          onLogout={handleLogout}
           favoritesCount={favorites.length}
           cartCount={cartCount}
         />
 
+        {/* Приветственный блок */}
         <HeroSection
           heading="Build the perfect gaming and work setup"
           subheading="Curated hardware for creators, gamers, and productivity enthusiasts."
           buttonText="Customize build"
         />
 
-        <section className="stats-section">
-          <SectionHeader
-            title="Catalog Statistics"
-            subtitle="Current store metrics"
-            align="center"
+        {/* Статистика каталога */}
+        {isAuthenticated && (
+          <StatsSection
+            productsCount={products.length}
+            categoriesCount={CATEGORIES.length}
+            favoritesCount={favorites.length}
           />
-          <div className="stats-grid">
-            <StatCard title="Products in Catalog" value={products.length} />
-            <StatCard title="Hardware Categories" value={CATEGORIES.length} />
-            <StatCard title="Favorite Products" value={favorites.length} />
-          </div>
-        </section>
+        )}
 
-        <section className="catalog-section">
-          <SectionHeader
-            title="Hardware Catalog"
-            subtitle="Find components for your next PC build."
-          />
+        {/* Каталог товаров с поиском, фильтрами и пагинацией */}
+        <CatalogSection
+          categories={CATEGORIES}
+          isLoading={isLoading}
+          searchQuery={searchQuery}
+          setSearchQuery={setSearchQuery}
+          sortBy={sortBy}
+          setSortBy={setSortBy}
+          selectedCategory={selectedCategory}
+          setSelectedCategory={setSelectedCategory}
+          products={paginatedProducts}
+          favorites={favorites}
+          onAddToCart={handleAddToCart}
+          onBuyNow={handleBuyNow}
+          onToggleFavorite={handleToggleFavorite}
+          onQuickView={(product) => {
+            setSelectedProduct(product);
+            setIsModalOpen(true);
+          }}
+          currentPage={safeCurrentPage}
+          totalPages={totalPages}
+          onPrev={() =>
+            setCurrentPage((page) =>
+              Math.min(Math.max(page - 1, 1), totalPages),
+            )
+          }
+          onNext={() =>
+            setCurrentPage((page) =>
+              Math.min(Math.max(page + 1, 1), totalPages),
+            )
+          }
+        />
 
-          {isLoading ? (
-            <p role="status">Loading Catalog...</p>
-          ) : (
-            <>
-              <div className="catalog-tools">
-                <SearchBar
-                  searchQuery={searchQuery}
-                  setSearchQuery={setSearchQuery}
-                />
-                <SortDropdown sortBy={sortBy} setSortBy={setSortBy} />
-              </div>
-
-              <CategoryFilter
-                categories={["All", ...CATEGORIES]}
-                selectedCategory={selectedCategory}
-                setSelectedCategory={setSelectedCategory}
-              />
-
-              {paginatedProducts.length > 0 ? (
-                <div className="product-grid">
-                  {paginatedProducts.map((product) => (
-                    <Card
-                      key={product.id}
-                      product={product}
-                      isFavorite={favorites.includes(product.id)}
-                      onAddToCart={handleAddToCart}
-                      onBuyNow={handleBuyNow}
-                      onToggleFavorite={handleToggleFavorite}
-                      onQuickView={(prod) => {
-                        setSelectedProduct(prod);
-                        setIsModalOpen(true);
-                      }}
-                    />
-                  ))}
-                </div>
-              ) : (
-                <p role="status">No products found for your search.</p>
-              )}
-
-              <Pagination
-                currentPage={safeCurrentPage}
-                totalPages={totalPages}
-                onPrev={() =>
-                  setCurrentPage((page) =>
-                    Math.min(Math.max(page - 1, 1), totalPages),
-                  )
-                }
-                onNext={() =>
-                  setCurrentPage((page) =>
-                    Math.min(Math.max(page + 1, 1), totalPages),
-                  )
-                }
-              />
-            </>
-          )}
-        </section>
-
-        <section className="reviews-section">
-          <SectionHeader
-            title="Customer Reviews"
-            subtitle="Feedback from people who have built their PCs."
-          />
-          <div className="testimonial-grid">
-            {testimonials.map((testimonial) => (
-              <TestimonialCard key={testimonial.id} {...testimonial} />
-            ))}
-          </div>
-        </section>
+        {/* Отзывы покупателей */}
+        <ReviewsSection testimonials={testimonials} />
       </Container>
 
+      {/* Подвал сайта */}
       <Footer
         copyrightText="© 2026 PC Configurator. All rights reserved."
         socialLinks={socialLinks}
         logoSrc={logoAsset}
       />
 
-      <Modal
+      {/* Модальные окна авторизации и подробной информации о товаре */}
+      <AuthPromptModal
         isOpen={isAuthPromptOpen}
-        title="Log in required"
         onClose={() => setIsAuthPromptOpen(false)}
-      >
-        <p>
-          You need to log in before using favorites, the cart, or purchase
-          actions.
-        </p>
-        <Button text="Log in" onClick={handleLogin} />
-      </Modal>
+        onLogin={handleLogin}
+      />
 
-      <Modal
+      <ProductDetailsModal
         isOpen={isModalOpen}
-        title={selectedProduct?.name ?? "Product"}
+        product={selectedProduct}
         onClose={() => {
           setIsModalOpen(false);
           setSelectedProduct(null);
         }}
-      >
-        {selectedProduct && (
-          <div>
-            <img
-              src={selectedProduct.image}
-              alt={selectedProduct.name}
-              style={{
-                width: "100%",
-                height: "260px",
-                objectFit: "contain",
-                background: "var(--bg-surface)",
-              }}
-            />
-            <h3>{selectedProduct.name}</h3>
-            <p>Category: {selectedProduct.category}</p>
-            <p className="price">
-              Price: {selectedProduct.price.toLocaleString()} ₸
-            </p>
-            <p>{selectedProduct.description}</p>
-            <div style={{ display: "flex", gap: "12px", flexWrap: "wrap" }}>
-              <Button
-                text="Add to Cart"
-                variant="outline"
-                onClick={() => {
-                  if (handleAddToCart(selectedProduct, 1)) {
-                    setIsModalOpen(false);
-                  }
-                }}
-              />
-              <Button
-                text="Buy Now"
-                variant="primary"
-                onClick={() => {
-                  if (handleAddToCart(selectedProduct, 1)) {
-                    alert(`Purchase: ${selectedProduct.name}`);
-                    setIsModalOpen(false);
-                  }
-                }}
-              />
-            </div>
-          </div>
-        )}
-      </Modal>
+        onAddToCart={handleAddToCart}
+        onBuyNow={handleBuyNow}
+      />
     </div>
   );
 }
