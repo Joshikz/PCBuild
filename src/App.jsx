@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import "./App.css";
 
 import Container from "./components/Container/Container";
@@ -104,11 +104,35 @@ function App() {
   const [sortBy, setSortBy] = useState("price-asc");
   const [currentPage, setCurrentPage] = useState(1);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isAuthPromptOpen, setIsAuthPromptOpen] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState(null);
   const [cartItems, setCartItems] = useState([]);
   const [favorites, setFavorites] = useState([]);
+  const [products, setProducts] = useState([]);
+  const [isLoading, setIsLoading] = useState(true);
 
-  const filteredProducts = mockProducts
+  useEffect(() => {
+    const timeoutId = setTimeout(() => {
+      setProducts(mockProducts);
+      setIsLoading(false);
+    }, 1000);
+
+    return () => clearTimeout(timeoutId);
+  }, []);
+
+  const requireAuthentication = () => {
+    if (isAuthenticated) return true;
+
+    setIsAuthPromptOpen(true);
+    return false;
+  };
+
+  const handleLogin = () => {
+    setIsAuthenticated(true);
+    setIsAuthPromptOpen(false);
+  };
+
+  const filteredProducts = products
     .filter(
       (product) =>
         selectedCategory === "All" || product.category === selectedCategory,
@@ -136,6 +160,8 @@ function App() {
   );
 
   const handleAddToCart = (product, quantity) => {
+    if (!requireAuthentication()) return false;
+
     setCartItems((currentItems) => {
       const existingItem = currentItems.find((item) => item.id === product.id);
 
@@ -149,14 +175,24 @@ function App() {
           : item,
       );
     });
+
+    return true;
   };
 
   const handleToggleFavorite = (productId) => {
+    if (!requireAuthentication()) return;
+
     setFavorites((currentFavorites) =>
       currentFavorites.includes(productId)
         ? currentFavorites.filter((id) => id !== productId)
         : [...currentFavorites, productId],
     );
+  };
+
+  const handleBuyNow = (product, quantity) => {
+    if (!handleAddToCart(product, quantity)) return;
+
+    alert(`Purchase: ${product.name}`);
   };
 
   const cartCount = cartItems.reduce((total, item) => total + item.quantity, 0);
@@ -168,7 +204,7 @@ function App() {
           isDarkMode={isDarkMode}
           onToggleTheme={() => setIsDarkMode((currentMode) => !currentMode)}
           isAuthenticated={isAuthenticated}
-          onLogin={() => setIsAuthenticated(true)}
+          onLogin={handleLogin}
           onLogout={() => setIsAuthenticated(false)}
           favoritesCount={favorites.length}
           cartCount={cartCount}
@@ -187,7 +223,7 @@ function App() {
             align="center"
           />
           <div className="stats-grid">
-            <StatCard title="Products in Catalog" value={mockProducts.length} />
+            <StatCard title="Products in Catalog" value={products.length} />
             <StatCard title="Hardware Categories" value={CATEGORIES.length} />
             <StatCard title="Favorite Products" value={favorites.length} />
           </div>
@@ -199,58 +235,61 @@ function App() {
             subtitle="Find components for your next PC build."
           />
 
-          <div className="catalog-tools">
-            <SearchBar
-              searchQuery={searchQuery}
-              setSearchQuery={setSearchQuery}
-            />
-            <SortDropdown sortBy={sortBy} setSortBy={setSortBy} />
-          </div>
-
-          <CategoryFilter
-            categories={["All", ...CATEGORIES]}
-            selectedCategory={selectedCategory}
-            setSelectedCategory={setSelectedCategory}
-          />
-
-          {paginatedProducts.length > 0 ? (
-            <div className="product-grid">
-              {paginatedProducts.map((product) => (
-                <Card
-                  key={product.id}
-                  product={product}
-                  isFavorite={favorites.includes(product.id)}
-                  onAddToCart={handleAddToCart}
-                  onBuyNow={(prod, qty) => {
-                    handleAddToCart(prod, qty);
-                    alert(`Purchase: ${prod.name}`);
-                  }}
-                  onToggleFavorite={handleToggleFavorite}
-                  onQuickView={(prod) => {
-                    setSelectedProduct(prod);
-                    setIsModalOpen(true);
-                  }}
-                />
-              ))}
-            </div>
+          {isLoading ? (
+            <p role="status">Loading Catalog...</p>
           ) : (
-            <p role="status">No products found for your search.</p>
-          )}
+            <>
+              <div className="catalog-tools">
+                <SearchBar
+                  searchQuery={searchQuery}
+                  setSearchQuery={setSearchQuery}
+                />
+                <SortDropdown sortBy={sortBy} setSortBy={setSortBy} />
+              </div>
 
-          <Pagination
-            currentPage={safeCurrentPage}
-            totalPages={totalPages}
-            onPrev={() =>
-              setCurrentPage((page) =>
-                Math.min(Math.max(page - 1, 1), totalPages),
-              )
-            }
-            onNext={() =>
-              setCurrentPage((page) =>
-                Math.min(Math.max(page + 1, 1), totalPages),
-              )
-            }
-          />
+              <CategoryFilter
+                categories={["All", ...CATEGORIES]}
+                selectedCategory={selectedCategory}
+                setSelectedCategory={setSelectedCategory}
+              />
+
+              {paginatedProducts.length > 0 ? (
+                <div className="product-grid">
+                  {paginatedProducts.map((product) => (
+                    <Card
+                      key={product.id}
+                      product={product}
+                      isFavorite={favorites.includes(product.id)}
+                      onAddToCart={handleAddToCart}
+                      onBuyNow={handleBuyNow}
+                      onToggleFavorite={handleToggleFavorite}
+                      onQuickView={(prod) => {
+                        setSelectedProduct(prod);
+                        setIsModalOpen(true);
+                      }}
+                    />
+                  ))}
+                </div>
+              ) : (
+                <p role="status">No products found for your search.</p>
+              )}
+
+              <Pagination
+                currentPage={safeCurrentPage}
+                totalPages={totalPages}
+                onPrev={() =>
+                  setCurrentPage((page) =>
+                    Math.min(Math.max(page - 1, 1), totalPages),
+                  )
+                }
+                onNext={() =>
+                  setCurrentPage((page) =>
+                    Math.min(Math.max(page + 1, 1), totalPages),
+                  )
+                }
+              />
+            </>
+          )}
         </section>
 
         <section className="reviews-section">
@@ -271,6 +310,18 @@ function App() {
         socialLinks={socialLinks}
         logoSrc={logoAsset}
       />
+
+      <Modal
+        isOpen={isAuthPromptOpen}
+        title="Log in required"
+        onClose={() => setIsAuthPromptOpen(false)}
+      >
+        <p>
+          You need to log in before using favorites, the cart, or purchase
+          actions.
+        </p>
+        <Button text="Log in" onClick={handleLogin} />
+      </Modal>
 
       <Modal
         isOpen={isModalOpen}
@@ -303,17 +354,19 @@ function App() {
                 text="Add to Cart"
                 variant="outline"
                 onClick={() => {
-                  handleAddToCart(selectedProduct, 1);
-                  setIsModalOpen(false);
+                  if (handleAddToCart(selectedProduct, 1)) {
+                    setIsModalOpen(false);
+                  }
                 }}
               />
               <Button
                 text="Buy Now"
                 variant="primary"
                 onClick={() => {
-                  handleAddToCart(selectedProduct, 1);
-                  alert(`Purchase: ${selectedProduct.name}`);
-                  setIsModalOpen(false);
+                  if (handleAddToCart(selectedProduct, 1)) {
+                    alert(`Purchase: ${selectedProduct.name}`);
+                    setIsModalOpen(false);
+                  }
                 }}
               />
             </div>
