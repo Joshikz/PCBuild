@@ -1,8 +1,12 @@
 import Logo from "../Logo/Logo";
+import useTheme from "../../context/useTheme";
 
 export default function Footer({ copyrightText, socialLinks = [], logoSrc }) {
+  const { theme } = useTheme();
+
   return (
     <footer
+      className={`app-footer ${theme}-theme`}
       style={{
         background: "var(--bg-card)",
         color: "var(--text-primary)",

@@ -2,6 +2,8 @@ import { useState } from "react";
 import Badge from "../Badge/Badge";
 import Button from "../Button/Button";
 import RatingStars from "../RatingStars/RatingStars";
+import useTheme from "../../context/useTheme";
+import useCart from "../../context/useCart";
 
 export default function Card({
   product,
@@ -12,6 +14,9 @@ export default function Card({
   onQuickView,
 }) {
   const [quantity, setQuantity] = useState(1);
+  const { theme } = useTheme();
+  const { cartItems } = useCart();
+  const itemInCart = cartItems.find((item) => item.id === product.id);
 
   const increaseQty = () =>
     setQuantity((currentQuantity) => currentQuantity + 1);
@@ -20,6 +25,7 @@ export default function Card({
 
   return (
     <article
+      className={`product-card ${theme}-theme`}
       style={{
         position: "relative",
         border: "1px solid var(--border, #e7cdb3)",
@@ -120,7 +126,7 @@ export default function Card({
 
         <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
           <Button
-            text="Add to Cart"
+            text={itemInCart ? `Add More (${itemInCart.quantity})` : "Add to Cart"}
             variant="outline"
             onClick={() => onAddToCart(product, quantity)}
           />

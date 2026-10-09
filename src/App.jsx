@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import "./App.css";
 
 import Container from "./components/Container/Container";
@@ -10,9 +10,14 @@ import StatsSection from "./components/StatsSection/StatsSection";
 import ReviewsSection from "./components/ReviewsSection/ReviewsSection";
 import AuthPromptModal from "./components/AuthPromptModal/AuthPromptModal";
 import ProductDetailsModal from "./components/ProductDetailsModal/ProductDetailsModal";
+import OfferCountdown from "./components/OfferCountdown/OfferCountdown";
+import CartSection from "./components/CartSection/CartSection";
 
 import { CATEGORIES, mockProducts } from "./data/products";
 import logoAsset from "./assets/logo.svg";
+import useTheme from "./context/useTheme";
+import useAuth from "./context/useAuth";
+import useCart from "./context/useCart";
 
 // Данные для подвала и блока отзывов.
 const socialLinks = [
@@ -42,15 +47,8 @@ const testimonials = [
   },
 ];
 
-const isValidCartItem = (item) =>
-  item !== null &&
-  typeof item === "object" &&
-  Number.isInteger(item.id) &&
-  typeof item.name === "string" &&
-  Number.isInteger(item.quantity) &&
-  item.quantity > 0;
-
 const isValidFavoriteId = (productId) => Number.isInteger(productId);
+const PRODUCTS_PER_PAGE = 8;
 
 function readStoredArray(key, isValidItem) {
   try {
@@ -58,10 +56,7 @@ function readStoredArray(key, isValidItem) {
     if (storedValue === null) return [];
 
     const parsedValue = JSON.parse(storedValue);
-    if (
-      !Array.isArray(parsedValue) ||
-      !parsedValue.every(isValidItem)
-    ) {
+    if (!Array.isArray(parsedValue) || !parsedValue.every(isValidItem)) {
       console.error(`Stored ${key} data has an invalid format.`);
       return [];
     }
@@ -71,10 +66,6 @@ function readStoredArray(key, isValidItem) {
     console.error(`Failed to read ${key} from localStorage.`, error);
     return [];
   }
-}
-
-function readSavedCart() {
-  return readStoredArray("cart", isValidCartItem);
 }
 
 function readSavedFavorites() {
@@ -91,8 +82,7 @@ function saveToStorage(key, value) {
 
 function readStoredBoolean(key) {
   try {
-    const storedValue = window.localStorage.getItem(key);
-    return storedValue === "true";
+    return window.localStorage.getItem(key) === "true";
   } catch (error) {
     console.error(`Failed to read ${key} from localStorage.`, error);
     return false;
@@ -101,32 +91,37 @@ function readStoredBoolean(key) {
 
 function App() {
   // Состояние интерфейса, каталога, авторизации и покупок.
-  const [isDarkMode, setIsDarkMode] = useState(false);
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const { theme } = useTheme();
+  const { isAuthenticated, login, logout } = useAuth();
+  const { addToCart, clearCart } = useCart();
+  const [isMobile, setIsMobile] = useState(() => window.innerWidth < 768);
   const [searchQuery, setSearchQuery] = useState("");
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("All");
   const [sortBy, setSortBy] = useState("price-asc");
   const [currentPage, setCurrentPage] = useState(1);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isAuthPromptOpen, setIsAuthPromptOpen] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState(null);
-  const [cartItems, setCartItems] = useState([]);
   const [favorites, setFavorites] = useState([]);
   const [products, setProducts] = useState([]);
+  const [filteredProducts, setFilteredProducts] = useState([]);
+  const [paginatedProducts, setPaginatedProducts] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isCatalogLoading, setIsCatalogLoading] = useState(true);
   const [isStorageLoaded, setIsStorageLoaded] = useState(false);
+  const [toastMessage, setToastMessage] = useState(null);
+  const [scrollProgress, setScrollProgress] = useState(0);
+  const hasMounted = useRef(false);
+  const toastId = useRef(0);
+  const debouncedSearchQueryRef = useRef("");
 
-  // Восстанавливает сохраненные настройки и данные пользователя при запуске.
+  // Восстанавливает сохраненные пользовательские данные при запуске.
   useEffect(() => {
-    const hasActiveSession = readStoredBoolean("isAuthenticated");
-
-    if (hasActiveSession) {
-      setCartItems(readSavedCart());
+    if (readStoredBoolean("isAuthenticated")) {
       setFavorites(readSavedFavorites());
     }
 
-    setIsDarkMode(readStoredBoolean("isDarkMode"));
-    setIsAuthenticated(hasActiveSession);
     setIsStorageLoaded(true);
   }, []);
 
@@ -134,22 +129,24 @@ function App() {
   useEffect(() => {
     if (!isStorageLoaded) return;
 
-    saveToStorage("isDarkMode", isDarkMode);
-    saveToStorage("isAuthenticated", isAuthenticated);
-
     if (isAuthenticated) {
-      saveToStorage("cart", cartItems);
       saveToStorage("favorites", favorites);
     }
   }, [
-    cartItems,
     favorites,
-    isDarkMode,
     isAuthenticated,
     isStorageLoaded,
   ]);
 
-  // Имитация загрузки списка товаров.
+  // Отслеживает ширину окна для переключения на мобильное меню.
+  useEffect(() => {
+    const handleResize = () => setIsMobile(window.innerWidth < 768);
+
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
+
+  // Загружает каталог при первом монтировании.
   useEffect(() => {
     const timeoutId = setTimeout(() => {
       setProducts(mockProducts);
@@ -158,6 +155,132 @@ function App() {
 
     return () => clearTimeout(timeoutId);
   }, []);
+
+  // Откладывает применение поискового запроса до паузы во вводе.
+  useEffect(() => {
+    const timeoutId = window.setTimeout(() => {
+      const searchDidNotChange =
+        searchQuery === debouncedSearchQueryRef.current;
+      debouncedSearchQueryRef.current = searchQuery;
+      setDebouncedSearchQuery(searchQuery);
+      if (searchDidNotChange) setIsCatalogLoading(false);
+    }, 500);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [searchQuery]);
+
+  // Обновляет заголовок вкладки для выбранной категории или товара.
+  useEffect(() => {
+    const pageTitle = selectedProduct
+      ? selectedProduct.name
+      : selectedCategory === "All"
+        ? "All Components"
+        : selectedCategory;
+    document.title = `${pageTitle} | PC Configurator`;
+
+    return () => {
+      document.title = "PC Configurator";
+    };
+  }, [selectedCategory, selectedProduct]);
+
+  // Фильтрует каталог асинхронно; новая фильтрация отменяет предыдущую.
+  useEffect(() => {
+    if (isLoading) return undefined;
+
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(() => {
+      if (controller.signal.aborted) return;
+
+      const query = debouncedSearchQuery.trim().toLowerCase();
+      const result = products
+        .filter(
+          (product) =>
+            selectedCategory === "All" || product.category === selectedCategory,
+        )
+        .filter((product) => product.name.toLowerCase().includes(query))
+        .sort((first, second) => {
+          if (sortBy === "price-asc") return first.price - second.price;
+          if (sortBy === "price-desc") return second.price - first.price;
+          if (sortBy === "name-asc")
+            return first.name.localeCompare(second.name);
+          if (sortBy === "name-desc")
+            return second.name.localeCompare(first.name);
+          return 0;
+        });
+
+      const pageStart = (currentPage - 1) * PRODUCTS_PER_PAGE;
+      setFilteredProducts(result);
+      setPaginatedProducts(
+        result.slice(pageStart, pageStart + PRODUCTS_PER_PAGE),
+      );
+      setIsCatalogLoading(false);
+    }, 200);
+
+    return () => {
+      controller.abort();
+      window.clearTimeout(timeoutId);
+    };
+  }, [
+    products,
+    selectedCategory,
+    debouncedSearchQuery,
+    sortBy,
+    currentPage,
+    isLoading,
+  ]);
+
+  // Закрывает открытые модальные окна клавишей Escape.
+  useEffect(() => {
+    if (!isModalOpen && !isAuthPromptOpen) return undefined;
+
+    const handleKeyDown = (event) => {
+      if (event.key !== "Escape") return;
+      setIsModalOpen(false);
+      setIsAuthPromptOpen(false);
+      setSelectedProduct(null);
+    };
+
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [isModalOpen, isAuthPromptOpen]);
+
+  // При смене страницы каталога возвращает к началу каталога, а не сайта.
+  useEffect(() => {
+    if (!hasMounted.current) {
+      hasMounted.current = true;
+      return;
+    }
+
+    document
+      .getElementById("catalog")
+      ?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [currentPage]);
+
+  // Обновляет индикатор прокрутки страницы и снимает подписку при размонтировании.
+  useEffect(() => {
+    const handleScroll = () => {
+      const scrollableHeight =
+        document.documentElement.scrollHeight - window.innerHeight;
+      const progress =
+        scrollableHeight > 0 ? (window.scrollY / scrollableHeight) * 100 : 0;
+      setScrollProgress(Math.min(Math.max(progress, 0), 100));
+    };
+
+    window.addEventListener("scroll", handleScroll, { passive: true });
+    const frameId = window.requestAnimationFrame(handleScroll);
+    return () => {
+      window.cancelAnimationFrame(frameId);
+      window.removeEventListener("scroll", handleScroll);
+    };
+  }, []);
+
+  // Автоматически скрывает уведомление о добавлении товара через 3 секунды.
+  useEffect(() => {
+    if (!toastMessage) return undefined;
+
+    const timeoutId = window.setTimeout(() => setToastMessage(null), 3000);
+    return () => window.clearTimeout(timeoutId);
+  }, [toastMessage]);
 
   // Авторизация нужна для действий с корзиной и избранным.
   const requireAuthentication = () => {
@@ -168,70 +291,75 @@ function App() {
   };
 
   const handleLogin = () => {
-    setCartItems(readSavedCart());
     setFavorites(readSavedFavorites());
-    setIsAuthenticated(true);
+    login();
     setIsAuthPromptOpen(false);
   };
 
   const handleLogout = () => {
-    setIsAuthenticated(false);
-    setCartItems([]);
+    logout();
+    clearCart();
     setFavorites([]);
     setSearchQuery("");
+    setDebouncedSearchQuery("");
+    debouncedSearchQueryRef.current = "";
     setSelectedCategory("All");
     setSortBy("price-asc");
     setCurrentPage(1);
+    setIsCatalogLoading(false);
     setIsModalOpen(false);
     setSelectedProduct(null);
+    setToastMessage(null);
   };
 
-  // Поиск, фильтрация, сортировка и разбиение каталога на страницы.
-  const filteredProducts = products
-    .filter(
-      (product) =>
-        selectedCategory === "All" || product.category === selectedCategory,
-    )
-    .filter((product) =>
-      product.name.toLowerCase().includes(searchQuery.trim().toLowerCase()),
-    )
-    .sort((first, second) => {
-      if (sortBy === "price-asc") return first.price - second.price;
-      if (sortBy === "price-desc") return second.price - first.price;
-      if (sortBy === "name-asc") return first.name.localeCompare(second.name);
-      if (sortBy === "name-desc") return second.name.localeCompare(first.name);
-      return 0;
-    });
-
-  const productsPerPage = 8;
+  // Формирует текущую страницу уже отфильтрованного каталога.
   const totalPages = Math.max(
     1,
-    Math.ceil(filteredProducts.length / productsPerPage),
+    Math.ceil(filteredProducts.length / PRODUCTS_PER_PAGE),
   );
   const safeCurrentPage = Math.min(Math.max(currentPage, 1), totalPages);
-  const paginatedProducts = filteredProducts.slice(
-    (safeCurrentPage - 1) * productsPerPage,
-    safeCurrentPage * productsPerPage,
-  );
+  const handleCategoryChange = (category) => {
+    if (category === selectedCategory) return;
+    setIsCatalogLoading(true);
+    setSelectedCategory(category);
+    setCurrentPage(1);
+  };
+
+  const handleSortChange = (sort) => {
+    if (sort === sortBy) return;
+    setIsCatalogLoading(true);
+    setSortBy(sort);
+    setCurrentPage(1);
+  };
+
+  const handleSearchChange = (query) => {
+    if (query === searchQuery) return;
+    setIsCatalogLoading(true);
+    setSearchQuery(query);
+    setCurrentPage(1);
+  };
+
+  const handlePreviousPage = () => {
+    setIsCatalogLoading(true);
+    setCurrentPage((page) => Math.max(page - 1, 1));
+  };
+
+  const handleNextPage = () => {
+    setIsCatalogLoading(true);
+    setCurrentPage((page) => Math.min(page + 1, totalPages));
+  };
 
   // Обработчики корзины и избранного.
   const handleAddToCart = (product, quantity) => {
     if (!requireAuthentication()) return false;
 
-    setCartItems((currentItems) => {
-      const existingItem = currentItems.find((item) => item.id === product.id);
+    addToCart(product, quantity);
 
-      if (!existingItem) {
-        return [...currentItems, { ...product, quantity }];
-      }
-
-      return currentItems.map((item) =>
-        item.id === product.id
-          ? { ...item, quantity: item.quantity + quantity }
-          : item,
-      );
+    toastId.current += 1;
+    setToastMessage({
+      id: toastId.current,
+      text: `${product.name} added to cart`,
     });
-
     return true;
   };
 
@@ -245,38 +373,45 @@ function App() {
     );
   };
 
-  // Быстрая покупка добавляет товар в корзину и показывает подтверждение.
+  // Быстрая покупка не меняет содержимое корзины.
   const handleBuyNow = (product, quantity) => {
-    if (!handleAddToCart(product, quantity)) return false;
+    if (!requireAuthentication()) return false;
 
-    alert(`Purchase: ${product.name}`);
+    alert(`Purchase: ${quantity} × ${product.name}`);
     return true;
   };
 
-  // Количество товаров в корзине для отображения в хедере.
-  const cartCount = cartItems.reduce((total, item) => total + item.quantity, 0);
-
   return (
-    <div className={`app-root ${isDarkMode ? "dark-theme" : "light-theme"}`}>
+    <div className={`app-root ${theme}-theme`}>
+      <div
+        className="scroll-progress"
+        style={{ transform: `scaleX(${scrollProgress / 100})` }}
+        aria-hidden="true"
+      />
+      {toastMessage && (
+        <div className="toast-message" role="status">
+          {toastMessage.text}
+        </div>
+      )}
       <Container>
         {/* Шапка сайта */}
         <Header
+          key={isMobile ? "mobile" : "desktop"}
           logoSrc={logoAsset}
-          isDarkMode={isDarkMode}
-          onToggleTheme={() => setIsDarkMode((currentMode) => !currentMode)}
-          isAuthenticated={isAuthenticated}
           onLogin={handleLogin}
-          onLogout={handleLogout}
           favoritesCount={favorites.length}
-          cartCount={cartCount}
+          isMobile={isMobile}
         />
 
         {/* Приветственный блок */}
+        <OfferCountdown />
         <HeroSection
-          heading="Build the perfect gaming and work setup"
-          subheading="Curated hardware for creators, gamers, and productivity enthusiasts."
-          buttonText="Customize build"
+          heading="Find the right components for your PC"
+          subheading="Explore processors, graphics cards, memory, storage, and more for your next build."
+          buttonText="Explore components"
         />
+
+        {isAuthenticated && <CartSection />}
 
         {/* Статистика каталога */}
         {isAuthenticated && (
@@ -290,13 +425,13 @@ function App() {
         {/* Каталог товаров с поиском, фильтрами и пагинацией */}
         <CatalogSection
           categories={CATEGORIES}
-          isLoading={isLoading}
+          isLoading={isLoading || isCatalogLoading}
           searchQuery={searchQuery}
-          setSearchQuery={setSearchQuery}
+          setSearchQuery={handleSearchChange}
           sortBy={sortBy}
-          setSortBy={setSortBy}
+          setSortBy={handleSortChange}
           selectedCategory={selectedCategory}
-          setSelectedCategory={setSelectedCategory}
+          setSelectedCategory={handleCategoryChange}
           products={paginatedProducts}
           favorites={favorites}
           onAddToCart={handleAddToCart}
@@ -308,16 +443,8 @@ function App() {
           }}
           currentPage={safeCurrentPage}
           totalPages={totalPages}
-          onPrev={() =>
-            setCurrentPage((page) =>
-              Math.min(Math.max(page - 1, 1), totalPages),
-            )
-          }
-          onNext={() =>
-            setCurrentPage((page) =>
-              Math.min(Math.max(page + 1, 1), totalPages),
-            )
-          }
+          onPrev={handlePreviousPage}
+          onNext={handleNextPage}
         />
 
         {/* Отзывы покупателей */}

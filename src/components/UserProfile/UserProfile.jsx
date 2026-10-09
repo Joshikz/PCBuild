@@ -2,6 +2,7 @@ export default function UserProfile({
   user,
   favoritesCount,
   cartCount,
+  cartTotal,
   onClick,
 }) {
   return (
@@ -47,7 +48,9 @@ export default function UserProfile({
       <span style={{ marginLeft: "auto", fontSize: "14px" }}>
         ❤️ {favoritesCount}
       </span>
-      <span style={{ fontSize: "14px" }}>Cart: {cartCount}</span>
+      <span style={{ fontSize: "14px" }}>
+        Cart: {cartCount} ({cartTotal.toLocaleString()} ₸)
+      </span>
     </button>
   );
 }

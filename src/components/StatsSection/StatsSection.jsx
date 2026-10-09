@@ -7,7 +7,7 @@ export default function StatsSection({
   favoritesCount,
 }) {
   return (
-    <section className="stats-section">
+    <section className="stats-section" id="statistics">
       <SectionHeader
         title="Catalog Statistics"
         subtitle="Current store metrics"
