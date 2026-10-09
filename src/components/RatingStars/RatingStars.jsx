@@ -19,9 +19,11 @@ export default function RatingStars({ score, reviewsCount }) {
           </span>
         ))}
       </span>
-      <span style={{ color: "var(--text-secondary)", fontSize: "12px" }}>
-        ({reviewsCount})
-      </span>
+      {reviewsCount > 0 && (
+        <span style={{ color: "var(--text-secondary)", fontSize: "12px" }}>
+          ({reviewsCount})
+        </span>
+      )}
     </div>
   );
 }

@@ -18,7 +18,7 @@ export default function TestimonialCard({
         color: "var(--text)",
       }}
     >
-      <RatingStars score={rating} reviewsCount={0} />
+      <RatingStars score={rating} />
       <blockquote style={{ margin: "16px 0" }}>{text}</blockquote>
       <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
         <img
