@@ -1,0 +1,70 @@
+.app-root {
+  min-height: 100vh;
+  width: 100%;
+  color: var(--text-primary);
+  background: var(--bg-main);
+  transition:
+    background-color 0.2s,
+    color 0.2s;
+}
+
+.dark-theme nav a {
+  color: var(--text) !important;
+}
+
+.dark-theme .catalog-tools input,
+.dark-theme .catalog-tools select {
+  color: var(--text);
+  background: var(--surface);
+  border-color: var(--border);
+}
+
+.app-header,
+.header-actions,
+.catalog-tools {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.app-header {
+  justify-content: space-between;
+  flex-wrap: wrap;
+  padding: 20px 0;
+}
+
+.header-actions {
+  flex-wrap: wrap;
+}
+
+.catalog-tools {
+  flex-wrap: wrap;
+  justify-content: space-between;
+}
+
+.product-grid,
+.testimonial-grid,
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 20px;
+}
+
+.stats-section {
+  margin-bottom: 40px;
+}
+
+.reviews-section {
+  margin-top: 48px;
+}
+
+@media (max-width: 640px) {
+  .app-header,
+  .header-actions {
+    justify-content: center;
+  }
+
+  .catalog-tools {
+    align-items: stretch;
+  }
+}
