@@ -1,6 +1,9 @@
+import { useNavigate } from "react-router-dom";
 import Button from "../Button/Button";
 
 export default function HeroSection({ heading, subheading, buttonText }) {
+  const navigate = useNavigate();
+
   return (
     <div
       style={{
@@ -13,7 +16,11 @@ export default function HeroSection({ heading, subheading, buttonText }) {
     >
       <h1>{heading}</h1>
       <p style={{ color: "inherit" }}>{subheading}</p>
-      <Button variant="primary" text={buttonText} />
+      <Button
+        variant="primary"
+        text={buttonText}
+        onClick={() => navigate("/catalog")}
+      />
     </div>
   );
 }

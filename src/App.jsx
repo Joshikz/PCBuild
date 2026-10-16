@@ -1,17 +1,29 @@
 import { useState, useEffect, useRef } from "react";
+import {
+  Navigate,
+  Outlet,
+  Route,
+  Routes,
+  useLocation,
+  useNavigate,
+  useSearchParams,
+} from "react-router-dom";
 import "./App.css";
 
-import Container from "./components/Container/Container";
-import HeroSection from "./components/HeroSection/HeroSection";
-import Footer from "./components/Footer/Footer";
-import Header from "./components/Header/Header";
+import MainLayout from "./components/MainLayout";
 import CatalogSection from "./components/CatalogSection/CatalogSection";
-import StatsSection from "./components/StatsSection/StatsSection";
-import ReviewsSection from "./components/ReviewsSection/ReviewsSection";
 import AuthPromptModal from "./components/AuthPromptModal/AuthPromptModal";
 import ProductDetailsModal from "./components/ProductDetailsModal/ProductDetailsModal";
-import OfferCountdown from "./components/OfferCountdown/OfferCountdown";
-import CartSection from "./components/CartSection/CartSection";
+import AboutPage from "./pages/AboutPage";
+import CartPage from "./pages/CartPage";
+import CatalogPage from "./pages/CatalogPage";
+import FavoritesPage from "./pages/FavoritesPage";
+import HomePage from "./pages/HomePage";
+import NotFoundPage from "./pages/NotFoundPage";
+import ProductPage from "./pages/ProductPage";
+import ProfileLayout from "./pages/ProfileLayout";
+import ProfilePage from "./pages/ProfilePage";
+import ProfileSettingsPage from "./pages/ProfileSettingsPage";
 
 import { CATEGORIES, mockProducts } from "./data/products";
 import logoAsset from "./assets/logo.svg";
@@ -19,7 +31,6 @@ import useTheme from "./context/useTheme";
 import useAuth from "./context/useAuth";
 import useCart from "./context/useCart";
 
-// Данные для подвала и блока отзывов.
 const socialLinks = [
   { platform: "Instagram", url: "https://instagram.com", icon: "◎" },
   { platform: "Telegram", url: "https://t.me", icon: "➤" },
@@ -49,6 +60,23 @@ const testimonials = [
 
 const isValidFavoriteId = (productId) => Number.isInteger(productId);
 const PRODUCTS_PER_PAGE = 8;
+const DEFAULT_CATEGORY = "All";
+const DEFAULT_SORT = "price-asc";
+const SORT_OPTIONS = ["price-asc", "price-desc", "name-asc", "name-desc"];
+
+function readCatalogFilters(searchParams) {
+  const category = searchParams.get("category");
+  const sort = searchParams.get("sort");
+
+  return {
+    searchQuery: searchParams.get("q") ?? "",
+    selectedCategory:
+      category === DEFAULT_CATEGORY || CATEGORIES.includes(category)
+        ? category
+        : DEFAULT_CATEGORY,
+    sortBy: SORT_OPTIONS.includes(sort) ? sort : DEFAULT_SORT,
+  };
+}
 
 function readStoredArray(key, isValidItem) {
   try {
@@ -89,16 +117,47 @@ function readStoredBoolean(key) {
   }
 }
 
+function ProtectedRoute() {
+  const { isLoading, isAuthenticated } = useAuth();
+  const location = useLocation();
+
+  if (isLoading) {
+    return <p role="status">Checking your session...</p>;
+  }
+
+  if (!isAuthenticated) {
+    return <Navigate to="/" replace state={{ from: location }} />;
+  }
+
+  return <Outlet />;
+}
+
 function App() {
-  // Состояние интерфейса, каталога, авторизации и покупок.
+  const location = useLocation();
+  const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { theme } = useTheme();
-  const { isAuthenticated, login, logout } = useAuth();
+  const { user, isAuthenticated, login, logout } = useAuth();
   const { addToCart, clearCart } = useCart();
+  const initialCatalogFilters =
+    location.pathname === "/catalog"
+      ? readCatalogFilters(searchParams)
+      : {
+          searchQuery: "",
+          selectedCategory: DEFAULT_CATEGORY,
+          sortBy: DEFAULT_SORT,
+        };
   const [isMobile, setIsMobile] = useState(() => window.innerWidth < 768);
-  const [searchQuery, setSearchQuery] = useState("");
-  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState("");
-  const [selectedCategory, setSelectedCategory] = useState("All");
-  const [sortBy, setSortBy] = useState("price-asc");
+  const [searchQuery, setSearchQuery] = useState(
+    initialCatalogFilters.searchQuery,
+  );
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState(
+    initialCatalogFilters.searchQuery,
+  );
+  const [selectedCategory, setSelectedCategory] = useState(
+    initialCatalogFilters.selectedCategory,
+  );
+  const [sortBy, setSortBy] = useState(initialCatalogFilters.sortBy);
   const [currentPage, setCurrentPage] = useState(1);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isAuthPromptOpen, setIsAuthPromptOpen] = useState(false);
@@ -114,9 +173,58 @@ function App() {
   const [scrollProgress, setScrollProgress] = useState(0);
   const hasMounted = useRef(false);
   const toastId = useRef(0);
-  const debouncedSearchQueryRef = useRef("");
+  const debouncedSearchQueryRef = useRef(initialCatalogFilters.searchQuery);
 
-  // Восстанавливает сохраненные пользовательские данные при запуске.
+  useEffect(() => {
+    if (location.pathname !== "/catalog") return;
+
+    const filters = readCatalogFilters(searchParams);
+    const filtersChanged =
+      filters.searchQuery !== searchQuery ||
+      filters.selectedCategory !== selectedCategory ||
+      filters.sortBy !== sortBy;
+
+    if (filtersChanged) {
+      setIsCatalogLoading(true);
+      setCurrentPage(1);
+
+      if (filters.searchQuery !== searchQuery) {
+        setSearchQuery(filters.searchQuery);
+        setDebouncedSearchQuery(filters.searchQuery);
+        debouncedSearchQueryRef.current = filters.searchQuery;
+      }
+      if (filters.selectedCategory !== selectedCategory) {
+        setSelectedCategory(filters.selectedCategory);
+      }
+      if (filters.sortBy !== sortBy) {
+        setSortBy(filters.sortBy);
+      }
+    }
+
+    const canonicalParams = new URLSearchParams(searchParams);
+    canonicalParams.delete("q");
+    canonicalParams.delete("category");
+    canonicalParams.delete("sort");
+    if (filters.searchQuery) canonicalParams.set("q", filters.searchQuery);
+    if (filters.selectedCategory !== DEFAULT_CATEGORY) {
+      canonicalParams.set("category", filters.selectedCategory);
+    }
+    if (filters.sortBy !== DEFAULT_SORT) {
+      canonicalParams.set("sort", filters.sortBy);
+    }
+
+    if (canonicalParams.toString() !== searchParams.toString()) {
+      setSearchParams(canonicalParams, { replace: true });
+    }
+  }, [
+    location.pathname,
+    searchParams,
+    searchQuery,
+    selectedCategory,
+    sortBy,
+    setSearchParams,
+  ]);
+
   useEffect(() => {
     if (readStoredBoolean("isAuthenticated")) {
       setFavorites(readSavedFavorites());
@@ -125,20 +233,14 @@ function App() {
     setIsStorageLoaded(true);
   }, []);
 
-  // Сохраняет изменения после завершения восстановления.
   useEffect(() => {
     if (!isStorageLoaded) return;
 
     if (isAuthenticated) {
       saveToStorage("favorites", favorites);
     }
-  }, [
-    favorites,
-    isAuthenticated,
-    isStorageLoaded,
-  ]);
+  }, [favorites, isAuthenticated, isStorageLoaded]);
 
-  // Отслеживает ширину окна для переключения на мобильное меню.
   useEffect(() => {
     const handleResize = () => setIsMobile(window.innerWidth < 768);
 
@@ -146,7 +248,6 @@ function App() {
     return () => window.removeEventListener("resize", handleResize);
   }, []);
 
-  // Загружает каталог при первом монтировании.
   useEffect(() => {
     const timeoutId = setTimeout(() => {
       setProducts(mockProducts);
@@ -156,7 +257,6 @@ function App() {
     return () => clearTimeout(timeoutId);
   }, []);
 
-  // Откладывает применение поискового запроса до паузы во вводе.
   useEffect(() => {
     const timeoutId = window.setTimeout(() => {
       const searchDidNotChange =
@@ -169,7 +269,6 @@ function App() {
     return () => window.clearTimeout(timeoutId);
   }, [searchQuery]);
 
-  // Обновляет заголовок вкладки для выбранной категории или товара.
   useEffect(() => {
     const pageTitle = selectedProduct
       ? selectedProduct.name
@@ -183,7 +282,6 @@ function App() {
     };
   }, [selectedCategory, selectedProduct]);
 
-  // Фильтрует каталог асинхронно; новая фильтрация отменяет предыдущую.
   useEffect(() => {
     if (isLoading) return undefined;
 
@@ -229,7 +327,6 @@ function App() {
     isLoading,
   ]);
 
-  // Закрывает открытые модальные окна клавишей Escape.
   useEffect(() => {
     if (!isModalOpen && !isAuthPromptOpen) return undefined;
 
@@ -244,7 +341,6 @@ function App() {
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, [isModalOpen, isAuthPromptOpen]);
 
-  // При смене страницы каталога возвращает к началу каталога, а не сайта.
   useEffect(() => {
     if (!hasMounted.current) {
       hasMounted.current = true;
@@ -256,7 +352,18 @@ function App() {
       ?.scrollIntoView({ behavior: "smooth", block: "start" });
   }, [currentPage]);
 
-  // Обновляет индикатор прокрутки страницы и снимает подписку при размонтировании.
+  useEffect(() => {
+    if (location.pathname !== "/" || !location.hash) return undefined;
+
+    const frameId = window.requestAnimationFrame(() => {
+      document
+        .getElementById(decodeURIComponent(location.hash.slice(1)))
+        ?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+
+    return () => window.cancelAnimationFrame(frameId);
+  }, [location.pathname, location.hash]);
+
   useEffect(() => {
     const handleScroll = () => {
       const scrollableHeight =
@@ -274,7 +381,6 @@ function App() {
     };
   }, []);
 
-  // Автоматически скрывает уведомление о добавлении товара через 3 секунды.
   useEffect(() => {
     if (!toastMessage) return undefined;
 
@@ -282,7 +388,6 @@ function App() {
     return () => window.clearTimeout(timeoutId);
   }, [toastMessage]);
 
-  // Авторизация нужна для действий с корзиной и избранным.
   const requireAuthentication = () => {
     if (isAuthenticated) return true;
 
@@ -294,6 +399,14 @@ function App() {
     setFavorites(readSavedFavorites());
     login();
     setIsAuthPromptOpen(false);
+
+    const returnTo = location.state?.from;
+    if (returnTo?.pathname) {
+      navigate(
+        `${returnTo.pathname}${returnTo.search ?? ""}${returnTo.hash ?? ""}`,
+        { replace: true, state: null },
+      );
+    }
   };
 
   const handleLogout = () => {
@@ -312,17 +425,43 @@ function App() {
     setToastMessage(null);
   };
 
-  // Формирует текущую страницу уже отфильтрованного каталога.
   const totalPages = Math.max(
     1,
     Math.ceil(filteredProducts.length / PRODUCTS_PER_PAGE),
   );
   const safeCurrentPage = Math.min(Math.max(currentPage, 1), totalPages);
+  const updateCatalogSearchParams = (filters, { replace = false } = {}) => {
+    if (location.pathname !== "/catalog") return;
+
+    setSearchParams(
+      (currentParams) => {
+        const nextParams = new URLSearchParams(currentParams);
+        nextParams.delete("q");
+        nextParams.delete("category");
+        nextParams.delete("sort");
+        if (filters.searchQuery) nextParams.set("q", filters.searchQuery);
+        if (filters.selectedCategory !== DEFAULT_CATEGORY) {
+          nextParams.set("category", filters.selectedCategory);
+        }
+        if (filters.sortBy !== DEFAULT_SORT) {
+          nextParams.set("sort", filters.sortBy);
+        }
+        return nextParams;
+      },
+      { replace },
+    );
+  };
+
   const handleCategoryChange = (category) => {
     if (category === selectedCategory) return;
     setIsCatalogLoading(true);
     setSelectedCategory(category);
     setCurrentPage(1);
+    updateCatalogSearchParams({
+      searchQuery,
+      selectedCategory: category,
+      sortBy,
+    });
   };
 
   const handleSortChange = (sort) => {
@@ -330,6 +469,11 @@ function App() {
     setIsCatalogLoading(true);
     setSortBy(sort);
     setCurrentPage(1);
+    updateCatalogSearchParams({
+      searchQuery,
+      selectedCategory,
+      sortBy: sort,
+    });
   };
 
   const handleSearchChange = (query) => {
@@ -337,6 +481,15 @@ function App() {
     setIsCatalogLoading(true);
     setSearchQuery(query);
     setCurrentPage(1);
+    const currentUrlQuery = searchParams.get("q") ?? "";
+    updateCatalogSearchParams(
+      {
+        searchQuery: query,
+        selectedCategory,
+        sortBy,
+      },
+      { replace: Boolean(currentUrlQuery && query) },
+    );
   };
 
   const handlePreviousPage = () => {
@@ -349,7 +502,6 @@ function App() {
     setCurrentPage((page) => Math.min(page + 1, totalPages));
   };
 
-  // Обработчики корзины и избранного.
   const handleAddToCart = (product, quantity) => {
     if (!requireAuthentication()) return false;
 
@@ -373,13 +525,38 @@ function App() {
     );
   };
 
-  // Быстрая покупка не меняет содержимое корзины.
   const handleBuyNow = (product, quantity) => {
     if (!requireAuthentication()) return false;
 
     alert(`Purchase: ${quantity} × ${product.name}`);
     return true;
   };
+
+  const renderCatalog = () => (
+    <CatalogSection
+      categories={CATEGORIES}
+      isLoading={isLoading || isCatalogLoading}
+      searchQuery={searchQuery}
+      setSearchQuery={handleSearchChange}
+      sortBy={sortBy}
+      setSortBy={handleSortChange}
+      selectedCategory={selectedCategory}
+      setSelectedCategory={handleCategoryChange}
+      products={paginatedProducts}
+      favorites={favorites}
+      onAddToCart={handleAddToCart}
+      onBuyNow={handleBuyNow}
+      onToggleFavorite={handleToggleFavorite}
+      onQuickView={(product) => {
+        setSelectedProduct(product);
+        setIsModalOpen(true);
+      }}
+      currentPage={safeCurrentPage}
+      totalPages={totalPages}
+      onPrev={handlePreviousPage}
+      onNext={handleNextPage}
+    />
+  );
 
   return (
     <div className={`app-root ${theme}-theme`}>
@@ -393,72 +570,83 @@ function App() {
           {toastMessage.text}
         </div>
       )}
-      <Container>
-        {/* Шапка сайта */}
-        <Header
-          key={isMobile ? "mobile" : "desktop"}
-          logoSrc={logoAsset}
-          onLogin={handleLogin}
-          favoritesCount={favorites.length}
-          isMobile={isMobile}
-        />
-
-        {/* Приветственный блок */}
-        <OfferCountdown />
-        <HeroSection
-          heading="Find the right components for your PC"
-          subheading="Explore processors, graphics cards, memory, storage, and more for your next build."
-          buttonText="Explore components"
-        />
-
-        {isAuthenticated && <CartSection />}
-
-        {/* Статистика каталога */}
-        {isAuthenticated && (
-          <StatsSection
-            productsCount={products.length}
-            categoriesCount={CATEGORIES.length}
-            favoritesCount={favorites.length}
+      <Routes>
+        <Route
+          element={
+            <MainLayout
+              logoSrc={logoAsset}
+              onLogin={handleLogin}
+              favoritesCount={favorites.length}
+              isMobile={isMobile}
+              copyrightText="© 2026 PC Configurator. All rights reserved."
+              socialLinks={socialLinks}
+            />
+          }
+        >
+          <Route
+            path="/"
+            element={
+              <HomePage
+                isAuthenticated={isAuthenticated}
+                productsCount={products.length}
+                categoriesCount={CATEGORIES.length}
+                favoritesCount={favorites.length}
+                testimonials={testimonials}
+                catalogSection={renderCatalog()}
+              />
+            }
           />
-        )}
+          <Route
+            path="/catalog"
+            element={<CatalogPage catalogSection={renderCatalog()} />}
+          />
+          <Route path="/about" element={<AboutPage />} />
+          <Route path="/cart" element={<CartPage />} />
+          <Route path="/favorites" element={<ProtectedRoute />}>
+            <Route
+              index
+              element={
+                <FavoritesPage
+                  products={products}
+                  isLoading={isLoading}
+                  favorites={favorites}
+                  onAddToCart={handleAddToCart}
+                  onBuyNow={handleBuyNow}
+                  onToggleFavorite={handleToggleFavorite}
+                  onQuickView={(product) => {
+                    setSelectedProduct(product);
+                    setIsModalOpen(true);
+                  }}
+                />
+              }
+            />
+          </Route>
+          <Route
+            path="/product/:id"
+            element={
+              <ProductPage
+                products={products}
+                isLoading={isLoading}
+                favorites={favorites}
+                onAddToCart={handleAddToCart}
+                onBuyNow={handleBuyNow}
+                onToggleFavorite={handleToggleFavorite}
+              />
+            }
+          />
+          <Route
+            path="/profile"
+            element={<ProtectedRoute />}
+          >
+            <Route element={<ProfileLayout user={user} />}>
+              <Route index element={<ProfilePage />} />
+              <Route path="settings" element={<ProfileSettingsPage />} />
+            </Route>
+          </Route>
+          <Route path="*" element={<NotFoundPage />} />
+        </Route>
+      </Routes>
 
-        {/* Каталог товаров с поиском, фильтрами и пагинацией */}
-        <CatalogSection
-          categories={CATEGORIES}
-          isLoading={isLoading || isCatalogLoading}
-          searchQuery={searchQuery}
-          setSearchQuery={handleSearchChange}
-          sortBy={sortBy}
-          setSortBy={handleSortChange}
-          selectedCategory={selectedCategory}
-          setSelectedCategory={handleCategoryChange}
-          products={paginatedProducts}
-          favorites={favorites}
-          onAddToCart={handleAddToCart}
-          onBuyNow={handleBuyNow}
-          onToggleFavorite={handleToggleFavorite}
-          onQuickView={(product) => {
-            setSelectedProduct(product);
-            setIsModalOpen(true);
-          }}
-          currentPage={safeCurrentPage}
-          totalPages={totalPages}
-          onPrev={handlePreviousPage}
-          onNext={handleNextPage}
-        />
-
-        {/* Отзывы покупателей */}
-        <ReviewsSection testimonials={testimonials} />
-      </Container>
-
-      {/* Подвал сайта */}
-      <Footer
-        copyrightText="© 2026 PC Configurator. All rights reserved."
-        socialLinks={socialLinks}
-        logoSrc={logoAsset}
-      />
-
-      {/* Модальные окна авторизации и подробной информации о товаре */}
       <AuthPromptModal
         isOpen={isAuthPromptOpen}
         onClose={() => setIsAuthPromptOpen(false)}

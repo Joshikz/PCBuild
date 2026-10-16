@@ -1,3 +1,4 @@
+import { Link } from "react-router-dom";
 import useCart from "../../context/useCart";
 
 export default function CartSection() {
@@ -27,7 +28,7 @@ export default function CartSection() {
           <span className="cart-empty-icon" aria-hidden="true">＋</span>
           <h3>Your cart is empty</h3>
           <p>Add components from the catalog to start your build.</p>
-          <a href="#catalog">Browse components</a>
+          <Link to="/catalog">Browse components</Link>
         </div>
       ) : (
         <div className="cart-content">

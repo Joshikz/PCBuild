@@ -1,19 +1,27 @@
+import { Link, NavLink } from "react-router-dom";
+
 export default function Navigation({ navItems = [], onNavigate }) {
   return (
-    <nav style={{ display: "flex", gap: "16px" }}>
-      {navItems.map((item) => (
-        <a
-          key={item.id}
-          href={item.link}
-          onClick={onNavigate}
-          style={{
-            color: "var(--text-primary)",
-            textDecoration: "none",
-          }}
-        >
-          {item.label}
-        </a>
-      ))}
+    <nav className="primary-navigation">
+      {navItems.map((item) => {
+        const isRouteLink = ["/catalog", "/about"].includes(item.link);
+        const linkProps = {
+          key: item.id,
+          to: item.link,
+          onClick: onNavigate,
+          className: isRouteLink
+            ? "navigation-link"
+            : "primary-navigation-link",
+        };
+
+        return isRouteLink ? (
+          <NavLink {...linkProps} end>
+            {item.label}
+          </NavLink>
+        ) : (
+          <Link {...linkProps}>{item.label}</Link>
+        );
+      })}
     </nav>
   );
 }

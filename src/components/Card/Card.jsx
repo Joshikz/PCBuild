@@ -52,10 +52,25 @@ export default function Card({
           height: "36px",
           cursor: "pointer",
           color: isFavorite ? "#dc3545" : "var(--text-secondary)",
-          fontSize: "20px",
+          display: "grid",
+          placeItems: "center",
         }}
       >
-        {isFavorite ? "♥" : "♡"}
+        <svg
+          viewBox="0 0 24 24"
+          aria-hidden="true"
+          style={{
+            width: "21px",
+            height: "21px",
+            fill: isFavorite ? "currentColor" : "none",
+            stroke: "currentColor",
+            strokeWidth: 1.7,
+            strokeLinecap: "round",
+            strokeLinejoin: "round",
+          }}
+        >
+          <path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1.1-1.1a5.5 5.5 0 0 0-7.8 7.8l1.1 1.1L12 21l7.8-7.5 1.1-1.1a5.5 5.5 0 0 0-.1-7.8Z" />
+        </svg>
       </button>
 
       <div style={{ marginBottom: "12px" }}>
@@ -106,17 +121,21 @@ export default function Card({
           marginTop: "16px",
         }}
       >
-        <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+        <div className="product-quantity">
           <button
             type="button"
+            className="product-quantity-button"
             onClick={decreaseQty}
             aria-label="Decrease quantity"
           >
             -
           </button>
-          <span aria-live="polite">{quantity}</span>
+          <span className="product-quantity-value" aria-live="polite">
+            {quantity}
+          </span>
           <button
             type="button"
+            className="product-quantity-button"
             onClick={increaseQty}
             aria-label="Increase quantity"
           >

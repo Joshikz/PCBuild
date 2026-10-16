@@ -32,24 +32,24 @@ export default function CatalogSection({
         subtitle="Find components for your next PC build."
       />
 
+      <div className="catalog-tools">
+        <SearchBar
+          searchQuery={searchQuery}
+          setSearchQuery={setSearchQuery}
+        />
+        <SortDropdown sortBy={sortBy} setSortBy={setSortBy} />
+      </div>
+
+      <CategoryFilter
+        categories={["All", ...categories]}
+        selectedCategory={selectedCategory}
+        setSelectedCategory={setSelectedCategory}
+      />
+
       {isLoading ? (
         <p role="status">Loading Catalog...</p>
       ) : (
         <>
-          <div className="catalog-tools">
-            <SearchBar
-              searchQuery={searchQuery}
-              setSearchQuery={setSearchQuery}
-            />
-            <SortDropdown sortBy={sortBy} setSortBy={setSortBy} />
-          </div>
-
-          <CategoryFilter
-            categories={["All", ...categories]}
-            selectedCategory={selectedCategory}
-            setSelectedCategory={setSelectedCategory}
-          />
-
           {products.length > 0 ? (
             <div className="product-grid">
               {products.map((product) => (
